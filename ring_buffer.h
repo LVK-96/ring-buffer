@@ -136,7 +136,11 @@ class FullFlagRingBuffer final : public StaticCapacityRingBuffer<T, S>
             T res = this->buf[this->tail];
             this->tail = idx_increment(this->tail);
             _full = false;
-            return res; } void write(const T& data) override {
+            return res;
+        }
+
+        void write(const T& data) override
+        {
             std::scoped_lock(this->acces_mutex);
             this->buf[this->head] = data;
             // Move tail if buffer is full
