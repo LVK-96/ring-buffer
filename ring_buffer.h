@@ -16,7 +16,7 @@ class BaseRingBuffer
     protected:
         size_t head; // Write idx
         size_t tail; // Read idx
-        mutable std::mutex acces_mutex; // Mutual exclusion
+        mutable std::mutex access_mutex; // Mutual exclusion
 
     public:
         BaseRingBuffer() : head(0), tail(0) {}
@@ -52,6 +52,16 @@ class GuardElemRingBuffer final : public StaticCapacityRingBuffer<T, S>
         constexpr static size_t true_capacity = S + 1; // One guard element
         std::array<T, true_capacity> buf;
 
+        bool _empty() const
+        {
+            return this->head == this->tail;
+        }
+
+        bool _full() const
+        {
+            return idx_increment(this->head) == this->tail;
+        }
+
         size_t idx_increment(const size_t idx) const
         {
             size_t new_idx = idx + 1;
@@ -63,8 +73,8 @@ class GuardElemRingBuffer final : public StaticCapacityRingBuffer<T, S>
 
         std::optional<T> read() override
         {
-            std::scoped_lock (this->acces_mutex);
-            if (empty()) return {};
+            std::scoped_lock lock(this->access_mutex);
+            if (_empty()) return {};
             T res = this->buf[this->tail];
             this->tail = idx_increment(this->tail);
             return res;
@@ -72,10 +82,10 @@ class GuardElemRingBuffer final : public StaticCapacityRingBuffer<T, S>
 
         void write(const T& data) override
         {
-            std::scoped_lock (this->acces_mutex);
+            std::scoped_lock lock(this->access_mutex);
             this->buf[this->head] = data;
             // Move tail if buffer is full
-            if (full()) {
+            if (_full()) {
                 // We just wrote over the oldest entry so tail should be moved one step forward
                 this->tail = idx_increment(this->tail);
             }
@@ -84,26 +94,26 @@ class GuardElemRingBuffer final : public StaticCapacityRingBuffer<T, S>
 
         void clear() override
         {
-            std::scoped_lock (this->acces_mutex);
+            std::scoped_lock lock(this->access_mutex);
             this->head = this->tail;
         }
 
         bool full() const override
         {
-            std::scoped_lock (this->acces_mutex);
-            return idx_increment(this->head) == this->tail;
+            std::scoped_lock lock(this->access_mutex);
+            return _full();
         }
 
         bool empty() const override
         {
-            std::scoped_lock (this->acces_mutex);
-            return this->head == this->tail;
+            std::scoped_lock lock(this->access_mutex);
+            return _empty();
         }
 
         size_t size() const override
         {
-            std::scoped_lock (this->acces_mutex);
-            if (full()) return this->capacity();
+            std::scoped_lock lock(this->access_mutex);
+            if (_full()) return this->capacity();
             else if (this->head >= this->tail) return this->head - this->tail;
             // tail is always behind head ->
             // head is on the next round of the buffer
@@ -120,6 +130,11 @@ class FullFlagRingBuffer final : public StaticCapacityRingBuffer<T, S>
         std::array<T, S> buf;
         bool _full; // Use a full flag instead of guard element
 
+        bool _empty() const
+        {
+            return (this->head == this->tail) && !_full;
+        }
+
         size_t idx_increment(const size_t idx) const
         {
             size_t new_idx = idx + 1;
@@ -131,8 +146,8 @@ class FullFlagRingBuffer final : public StaticCapacityRingBuffer<T, S>
 
         std::optional<T> read() override
         {
-            std::scoped_lock (this->acces_mutex);
-            if (empty()) return {};
+            std::scoped_lock lock(this->access_mutex);
+            if (_empty()) return {};
             T res = this->buf[this->tail];
             this->tail = idx_increment(this->tail);
             _full = false;
@@ -141,10 +156,10 @@ class FullFlagRingBuffer final : public StaticCapacityRingBuffer<T, S>
 
         void write(const T& data) override
         {
-            std::scoped_lock(this->acces_mutex);
+            std::scoped_lock lock(this->access_mutex);
             this->buf[this->head] = data;
             // Move tail if buffer is full
-            if (full()) {
+            if (_full) {
                 // We just wrote over the oldest entry so tail should be moved one step forward
                 this->tail = idx_increment(this->tail);
             }
@@ -155,26 +170,26 @@ class FullFlagRingBuffer final : public StaticCapacityRingBuffer<T, S>
 
         void clear() override
         {
-            std::scoped_lock (this->acces_mutex);
+            std::scoped_lock lock(this->access_mutex);
             this->head = this->tail;
             _full = false;
         }
 
         bool full() const override
         {
-            std::scoped_lock(this->acces_mutex);
+            std::scoped_lock lock(this->access_mutex);
             return _full;
         }
 
         bool empty() const override
         {
-            std::scoped_lock(this->acces_mutex);
-            return (this->head == this->tail) && !_full;
+            std::scoped_lock lock(this->access_mutex);
+            return _empty();
         }
 
         size_t size() const override
         {
-            std::scoped_lock (this->acces_mutex);
+            std::scoped_lock lock(this->access_mutex);
             if (_full) return S;
             else if (this->head >= this->tail) return this->head - this->tail;
             // tail is always behind head ->

@@ -5,6 +5,7 @@
 #include <thread>
 #include <chrono>
 #include <algorithm>
+#include <utility>
 
 #include "ring_buffer.h"
 
@@ -96,7 +97,7 @@ void ring_buf_test(ring_buffer::BaseRingBuffer<int> &ring_buf)
         writer_done = true;
     };
 
-    auto read_helper = [&ring_buf, &writer_done](size_t expected_nro_reads, int expected_offset=0, bool multithreaded=false) {
+    auto read_helper = [&ring_buf, &writer_done = std::as_const(writer_done)](size_t expected_nro_reads, int expected_offset=0, bool multithreaded=false) {
         size_t entries_read = 0;
         for(size_t i = 0; !(writer_done && ring_buf.empty()); ++i) {
             auto elem = ring_buf.read();
@@ -111,7 +112,6 @@ void ring_buf_test(ring_buffer::BaseRingBuffer<int> &ring_buf)
         assert(ring_buf.empty() && "Ring buffer should be empty after reading all elements!");
         // Check we read the expected amount of values
         assert((entries_read == expected_nro_reads) && "Did not read expected number of enteries from read buffer!");
-        writer_done = false;
     };
 
     // Write to the buffer 1 over capacity, should overwrite the first element
@@ -140,16 +140,19 @@ void ring_buf_test(ring_buffer::BaseRingBuffer<int> &ring_buf)
     assert(ring_buf.empty() && "Ring buffer should be empty after a clear!");
 
     // Parallel read and write
+    writer_done = false;
     std::thread writer_thread(write_helper, ring_buf.capacity() + 42, true);
     std::thread reader_thread(read_helper, ring_buf.capacity() + 42, 0, true);
     writer_thread.join();
     reader_thread.join();
 
+    writer_done = false;
     std::thread writer_thread2(write_helper, std::max(static_cast<int>(ring_buf.capacity()) - 420, 10), true);
     std::thread reader_thread2(read_helper, std::max(static_cast<int>(ring_buf.capacity()) - 420, 10), 0, true);
     writer_thread2.join();
     reader_thread2.join();
 
+    writer_done = false;
     std::thread writer_thread3(write_helper, ring_buf.capacity() + 69, true);
     std::thread reader_thread3(read_helper, ring_buf.capacity() + 69, 0, true);
     writer_thread3.join();
