@@ -74,7 +74,7 @@ class GuardElemRingBuffer final : public StaticCapacityRingBuffer<T, S>
         std::optional<T> read() override
         {
             std::scoped_lock lock(this->access_mutex);
-            if (_empty()) return {};
+            if (_empty()) return std::nullopt;
             T res = this->buf[this->tail];
             this->tail = idx_increment(this->tail);
             return res;
@@ -147,7 +147,7 @@ class FullFlagRingBuffer final : public StaticCapacityRingBuffer<T, S>
         std::optional<T> read() override
         {
             std::scoped_lock lock(this->access_mutex);
-            if (_empty()) return {};
+            if (_empty()) return std::nullopt;
             T res = this->buf[this->tail];
             this->tail = idx_increment(this->tail);
             _full = false;
